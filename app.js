@@ -43,6 +43,7 @@ function setNet(online) {
   var n = qLoad().length, b = el('net');
   if (!online) { b.className = 'net off'; b.textContent = '● آفلاین' + (n ? ' | ' + n + ' مورد روی گوشی ذخیره شده' : '') + ' | با وصل شدن اینترنت خودکار ارسال می‌شود'; }
   else if (n) { b.className = 'net wait'; b.textContent = 'در حال ارسال ' + n + ' مورد…'; }
+  else if (PRE.busy) { b.className = 'net wait'; b.textContent = 'در حال ذخیرهٔ طبقه‌ها روی گوشی: ' + PRE.done + ' از ' + PRE.total; }
   else { b.className = 'net'; b.textContent = ''; }
 }
 function sync() {
@@ -99,11 +100,41 @@ function cleanCache() {
   } catch (e) {}
 }
 // همهٔ طبقه‌های این کارشناس از قبل روی گوشی ذخیره می‌شوند تا بدون اینترنت هم باز شوند
+// همین که صفحه با اینترنت باز شد، همهٔ طبقه‌های کارشناس (سه‌تا سه‌تا) روی گوشی ذخیره می‌شوند
+var PRE = { busy: false, done: 0, total: 0, run: 0 };
 function preload(list) {
-  if (!list.length || navigator.onLine === false) return;
-  api('floors', { names: list.map(function (f) { return f.name; }), from: S.from, to: S.to, pid: S.init.pid })
-    .then(function (map) { Object.keys(map).forEach(function (n) { cacheSet(n, map[n]); }); }, function () {});
+  if (!list.length || navigator.onLine === false || !S.init) return;
+  var run = ++PRE.run, names = list.map(function (f) { return f.name; }), pid = S.init.pid, from = S.from, to = S.to;
+  PRE.busy = true; PRE.done = 0; PRE.total = names.length; setNet(NET.online);
+  (function next() {
+    if (run !== PRE.run) return;  // کارشناس یا دوره عوض شد
+    var part = names.slice(PRE.done, PRE.done + 3);
+    if (!part.length) {
+      PRE.busy = false; setNet(true);
+      toast('✓ همهٔ طبقه‌ها روی گوشی ذخیره شد؛ بدون اینترنت هم باز می‌شود', 3500);
+      return;
+    }
+    api('floors', { names: part, from: from, to: to, pid: pid }).then(function (map) {
+      if (run !== PRE.run) return;
+      Object.keys(map).forEach(function (n) {
+        cacheSet(n, map[n]);
+        if (n === S.floor && S.shown !== n) { S.rooms = overlay(map[n], n); render(); }  // طبقه‌ای که منتظرش بود
+      });
+      PRE.done += part.length; setNet(true); next();
+    }, function (e) {
+      if (run !== PRE.run) return;
+      PRE.busy = false; setNet(!!e.server);  // با وصل شدن دوباره ادامه پیدا می‌کند
+    });
+  })();
 }
+function missingFloors() {
+  return S.init ? myFloors().filter(function (f) { return !cacheGet(f.name); }) : [];
+}
+window.addEventListener('online', function () {
+  if (!S.init || S.me === null || S.me === undefined) return;
+  if (S.floor && S.shown !== S.floor) loadFloor(S.floor);
+  if (!PRE.busy && missingFloors().length) preload(myFloors());
+});
 
 function start(d) {
   S.init = d; S.people = d.people || []; el('sub').textContent = d.label || '';
@@ -159,11 +190,12 @@ function choose(me) {
   var f = fl.filter(function (x) { return x.name === last; })[0] || fl[0];
   if (!f) { el('nav').innerHTML = ''; el('main').innerHTML = '<div class="msg">این دوره طبقه‌ای به نام شما ثبت نشده.</div><button class="who" data-who="1">تغییر نام</button>'; return; }
   loadFloor(f.name);
-  preload(fl.filter(function (x) { return x.name !== f.name; }));
+  preload([f].concat(fl.filter(function (x) { return x.name !== f.name; })));
 }
 function loadFloor(name) {
-  S.floor = name; mem('rc_floor', name);
+  S.floor = name; S.shown = null; mem('rc_floor', name);
   var cached = cacheGet(name);
+  renderNav();  // دکمهٔ بازگشت و طبقه‌ها همیشه هست، حتی وقتی طبقه هنوز نیامده
   if (cached) { S.rooms = overlay(cached, name); render(); window.scrollTo(0, 0); }
   else el('main').innerHTML = '<div class="msg">در حال بارگذاری ' + esc(name) + '…</div>';
   api('floor', { name: name, from: S.from, to: S.to, pid: S.init.pid }).then(function (rows) {
@@ -203,12 +235,15 @@ function card(i) {
   h += '</div>';
   return h;
 }
-function render() {
-  // دکمهٔ بازگشت و طبقه‌ها داخل نوار بالا (چسبیده به بالای صفحه) تا موقع پایین رفتن هم دیده شوند
+// دکمهٔ بازگشت و طبقه‌ها داخل نوار بالا (چسبیده به بالای صفحه) تا موقع پایین رفتن هم دیده شوند
+function renderNav() {
   var nav = '<button class="back" data-who="1">→ بازگشت</button><div class="chips">';
   myFloors().forEach(function (f) { nav += '<button class="chip' + (f.name === S.floor ? ' on' : '') + '" data-f="' + esc(f.name) + '">' + esc(f.name) + '</button>'; });
   el('nav').innerHTML = nav + '</div>';
   var on = document.querySelector('.chip.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+function render() {
+  renderNav(); S.shown = S.floor;
   var h = '';
   var carried = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room]; }).map(function (r) { return r.room; });
   if (carried.length) h += '<div class="notice">از دورهٔ قبل پیگیری شود: ' + carried.join('، ') + '</div>';
