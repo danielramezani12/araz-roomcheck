@@ -181,7 +181,7 @@ function boot() {
     else setNet(!!e.server);
   });
 }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { r.update(); }).catch(function () {});
 boot();
 
 function findPerson(name) { return S.people.filter(function (p) { return p.name === name; })[0] || null; }
