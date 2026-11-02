@@ -266,7 +266,6 @@ function render() {
   var carried = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room]; }).map(function (r) { return r.room; });
   if (carried.length) h += '<div class="notice">از دورهٔ قبل پیگیری شود: ' + carried.join('، ') + '</div>';
   S.rooms.forEach(function (r, i) { h += card(i); });
-  h += '<div class="credit" dir="ltr">Made by danielramezani</div>';
   el('main').innerHTML = h; progress();
 }
 function redraw(i) { var c = el('r' + i); if (c) c.outerHTML = card(i); progress(); }
