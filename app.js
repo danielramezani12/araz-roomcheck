@@ -1,5 +1,8 @@
 // آدرس Web App گوگل (Deploy > Manage deployments). با New version همین آدرس می‌ماند.
-var API = 'https://script.google.com/macros/s/AKfycbw5YxgvUZ0RGgtEQu5KdBSaTIzhgYaeCE9XeIByjlb2lUUOHCnVDU9GMO0OBYZwZ24R/exec';
+var GOOGLE_API = 'https://script.google.com/macros/s/AKfycbw5YxgvUZ0RGgtEQu5KdBSaTIzhgYaeCE9XeIByjlb2lUUOHCnVDU9GMO0OBYZwZ24R/exec';
+// روی GitHub Pages مستقیم به گوگل؛ روی سرور داخلی هتل به خود سرور (که تیک‌ها را نگه می‌دارد و به گوگل می‌فرستد)
+var LOCAL = !/github\.io$/.test(location.hostname);
+var API = LOCAL ? 'api' : GOOGLE_API;
 var LABELS = ['وضعیت کنترل', 'داخلی TV', 'وضعیت IPTV', 'تلفن داخلی', 'Time', 'DND', 'Menu'];
 var GUEST = 'مهمان دارد', NO_GUEST = 'بدون مهمان', OOS = 'خارج از سرویس';
 var S = { init: null, people: [], me: null, from: 0, to: 9999999, floor: null, rooms: [] };
@@ -58,7 +61,7 @@ function sync() {
     qStore(qLoad().filter(function (x) { return ids.indexOf(x.id) < 0; }));
     (res.errors || []).forEach(function (er) { toast('ذخیره نشد (اتاق ' + er.room + '): ' + er.msg, 5000); });
     var left = qLoad().length;
-    if (NET.wasOffline && !left) { NET.wasOffline = false; toast('✓ اینترنت وصل شد و ' + (res.done || 0) + ' مورد به گوگل شیت منتقل شد', 4500); }
+    if (NET.wasOffline && !left) { NET.wasOffline = false; toast('✓ اینترنت وصل شد و ' + (res.done || 0) + ' مورد ' + (LOCAL ? 'به سرور هتل' : 'به گوگل شیت') + ' منتقل شد', 4500); }
     setNet(true);
     if (left) sync();
   }, function (e) {
