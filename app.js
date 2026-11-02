@@ -29,8 +29,8 @@ function api(fn, args) {
 }
 function askToken(msg) {
   el('nav').innerHTML = ''; el('prog').style.width = '0';
-  el('main').innerHTML = '<div class="msg">' + esc(msg || 'لینک شخصی خود را باز کنید، یا کد شخصی را اینجا وارد کنید.') + '</div>' +
-    '<div class="login"><input id="tok" autocomplete="off" autocapitalize="off" placeholder="کد شخصی"><button data-tok="1">ورود</button></div>';
+  el('main').innerHTML = '<div class="msg">' + esc(msg || 'لینک شخصی خود را کپی کنید و اینجا بچسبانید (یا فقط کد بعد از k=).') + '</div>' +
+    '<div class="login"><input id="tok" autocomplete="off" autocapitalize="off" placeholder="کد شخصی یا کل لینک"><button data-tok="1">ورود</button></div>';
 }
 function normMac(v) { var h = String(v || '').toUpperCase().replace(/[^0-9A-F]/g, ''); return h.length === 12 ? h.match(/../g).join(':') : null; }
 
@@ -238,7 +238,8 @@ function save(i, field, value) {
 document.addEventListener('click', function (e) {
   var b = e.target.closest('button'); if (!b) return;
   if (b.hasAttribute('data-tok')) {
-    var v = (el('tok').value || '').replace(/[^A-Za-z0-9]/g, '');
+    var raw = el('tok').value || '', km = raw.match(/[?&]k=([A-Za-z0-9]+)/);
+    var v = (km ? km[1] : raw).replace(/[^A-Za-z0-9]/g, '');  // کل لینک هم قبول است
     if (!v) return;
     TOKEN = v; mem('rc_k', v); mem('rc_init', null); mem('rc_me', null);
     el('main').innerHTML = '<div class="msg">در حال بارگذاری…</div>'; boot(); return;

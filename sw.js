@@ -1,6 +1,6 @@
 // Service Worker: فایل‌های صفحه روی گوشی ذخیره می‌شوند تا بدون اینترنت هم باز شود.
 // بعد از هر تغییر در فایل‌های سایت، عدد VERSION را یکی بالا ببرید.
-var VERSION = 'rc-v2';
+var VERSION = 'rc-v3';
 var FILES = ['./', 'index.html', 'app.js', 'style.css', 'logo.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
