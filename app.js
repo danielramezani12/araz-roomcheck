@@ -1,0 +1,282 @@
+// آدرس Web App گوگل (Deploy > Manage deployments). با New version همین آدرس می‌ماند.
+var API = 'https://script.google.com/macros/s/AKfycbw5YxgvUZ0RGgtEQu5KdBSaTIzhgYaeCE9XeIByjlb2lUUOHCnVDU9GMO0OBYZwZ24R/exec';
+var LABELS = ['وضعیت کنترل', 'داخلی TV', 'وضعیت IPTV', 'تلفن داخلی', 'Time', 'DND', 'Menu'];
+var GUEST = 'مهمان دارد', NO_GUEST = 'بدون مهمان', OOS = 'خارج از سرویس';
+var S = { init: null, people: [], me: null, from: 0, to: 9999999, floor: null, rooms: [] };
+var NET = { online: true, busy: false, wasOffline: false };
+function el(id) { return document.getElementById(id); }
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function toast(m, ms) { var t = el('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove('show'); }, ms || 2600); }
+function mem(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
+function memJson(k, d) { try { var v = mem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+// ---------- کد شخصی کارشناس (از لینک ?k=… یک بار روی گوشی ذخیره می‌شود) ----------
+var TOKEN = (function () {
+  var m = location.search.match(/[?&]k=([A-Za-z0-9]+)/);
+  if (m) { mem('rc_k', m[1]); return m[1]; }
+  return mem('rc_k') || '';
+})();
+// درخواست به Apps Script به صورت simple request (POST با text/plain) تا preflight لازم نشود
+function api(fn, args) {
+  var ctl = window.AbortController ? new AbortController() : null;
+  var tm = setTimeout(function () { if (ctl) ctl.abort(); }, 30000);
+  return fetch(API, { method: 'POST', body: JSON.stringify({ k: TOKEN, fn: fn, a: args || {} }), redirect: 'follow', signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { clearTimeout(tm); if (!r.ok) throw new Error('net'); return r.json(); })
+    .then(function (o) {
+      if (o && o.auth) { askToken(o.error); var e = new Error(o.error); e.auth = true; throw e; }
+      if (!o || !o.ok) { var e2 = new Error((o && o.error) || 'خطا'); e2.server = true; throw e2; }
+      return o.data;
+    }, function (e) { clearTimeout(tm); throw e; });
+}
+function askToken(msg) {
+  el('nav').innerHTML = ''; el('prog').style.width = '0';
+  el('main').innerHTML = '<div class="msg">' + esc(msg || 'لینک شخصی خود را باز کنید، یا کد شخصی را اینجا وارد کنید.') + '</div>' +
+    '<div class="login"><input id="tok" autocomplete="off" autocapitalize="off" placeholder="کد شخصی"><button data-tok="1">ورود</button></div>';
+}
+function normMac(v) { var h = String(v || '').toUpperCase().replace(/[^0-9A-F]/g, ''); return h.length === 12 ? h.match(/../g).join(':') : null; }
+
+// ---------- آفلاین: هر تغییر اول در صف گوشی ذخیره و بعد به شیت فرستاده می‌شود ----------
+function qLoad() { return memJson('rc_q', []); }
+function qStore(q) { mem('rc_q', JSON.stringify(q)); }
+function setNet(online) {
+  if (!online) NET.wasOffline = true;
+  NET.online = online;
+  var n = qLoad().length, b = el('net');
+  if (!online) { b.className = 'net off'; b.textContent = '● آفلاین' + (n ? ' | ' + n + ' مورد روی گوشی ذخیره شده' : '') + ' | با وصل شدن اینترنت خودکار ارسال می‌شود'; }
+  else if (n) { b.className = 'net wait'; b.textContent = 'در حال ارسال ' + n + ' مورد…'; }
+  else { b.className = 'net'; b.textContent = ''; }
+}
+function sync() {
+  var q = qLoad();
+  if (!q.length) { setNet(navigator.onLine !== false); return; }
+  if (NET.busy) return;
+  if (navigator.onLine === false) { setNet(false); return; }
+  NET.busy = true;
+  var batch = q.slice(0, 50), ids = batch.map(function (x) { return x.id; });
+  api('save', { list: batch }).then(function (res) {
+    NET.busy = false;
+    qStore(qLoad().filter(function (x) { return ids.indexOf(x.id) < 0; }));
+    (res.errors || []).forEach(function (er) { toast('ذخیره نشد (اتاق ' + er.room + '): ' + er.msg, 5000); });
+    var left = qLoad().length;
+    if (NET.wasOffline && !left) { NET.wasOffline = false; toast('✓ اینترنت وصل شد و ' + (res.done || 0) + ' مورد به گوگل شیت منتقل شد', 4500); }
+    setNet(true);
+    if (left) sync();
+  }, function (e) {
+    NET.busy = false;
+    setNet(!!e.server || !!e.auth);
+    if (e.server) toast('ذخیره نشد: ' + e.message, 5000);
+  });
+}
+window.addEventListener('online', sync);
+window.addEventListener('offline', function () { setNet(false); });
+setInterval(sync, 15000);
+
+function applyField(r, f, v) {
+  if (f === 'note') r.note = v;
+  else if (f === 'all') r.items = r.items.map(function () { return v; });
+  else if (f === 'ap') { r.ap = v; if (!v) r.mac = ''; }
+  else if (f === 'mac') { r.ap = true; r.mac = v; }
+  else if (/^i[0-6]$/.test(f)) r.items[+f.charAt(1)] = v;
+}
+// تغییرهایی که هنوز ارسال نشده‌اند روی دادهٔ رسیده از شیت اعمال می‌شوند تا چیزی برنگردد
+function overlay(rows, floor) {
+  rows = JSON.parse(JSON.stringify(rows));
+  qLoad().forEach(function (x) {
+    if (x.pid !== S.init.pid || x.floor !== floor) return;
+    var r = rows.filter(function (y) { return y.row === x.row; })[0];
+    if (r) applyField(r, x.field, x.value);
+  });
+  return rows;
+}
+function cacheKey(floor) { return 'rc_f|' + S.init.pid + '|' + floor + '|' + S.from + '|' + S.to; }
+function cacheSet(floor, rows) { mem(cacheKey(floor), JSON.stringify(rows)); }
+function cacheGet(floor) { return memJson(cacheKey(floor), null); }
+function cleanCache() {
+  try {
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('rc_f|') === 0 && k.indexOf('rc_f|' + S.init.pid + '|') !== 0) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+}
+// همهٔ طبقه‌های این کارشناس از قبل روی گوشی ذخیره می‌شوند تا بدون اینترنت هم باز شوند
+function preload(list) {
+  if (!list.length || navigator.onLine === false) return;
+  api('floors', { names: list.map(function (f) { return f.name; }), from: S.from, to: S.to, pid: S.init.pid })
+    .then(function (map) { Object.keys(map).forEach(function (n) { cacheSet(n, map[n]); }); }, function () {});
+}
+
+function start(d) {
+  S.init = d; S.people = d.people || []; el('sub').textContent = d.label || '';
+  mem('rc_init', JSON.stringify(d));
+  cleanCache();
+  // بار اول: کارشناس از روی کد شخصی خودش شناخته می‌شود (مدیر: همهٔ طبقه‌ها)
+  var me = mem('rc_me');
+  if (me === null || (me !== '' && !findPerson(me))) me = findPerson(d.me) ? d.me : (d.admin ? '' : null);
+  if (me !== null) choose(me); else pickName();
+  sync();
+}
+// اول دادهٔ ذخیره‌شده روی گوشی نشان داده می‌شود (بدون اینترنت هم)، بعد نسخهٔ تازه از شیت
+function boot() {
+  if (!TOKEN) { askToken(); return; }
+  var d = memJson('rc_init', null);
+  if (d) start(d);
+  api('init').then(function (fresh) {
+    // اگر دوره عوض شده یا اطلاعات تغییر کرده، صفحه با دادهٔ تازه ساخته می‌شود
+    if (!d || JSON.stringify(fresh) !== JSON.stringify(d)) {
+      if (d && fresh.pid === d.pid) { S.init = fresh; S.people = fresh.people || []; mem('rc_init', JSON.stringify(fresh)); if (S.floor) loadFloor(S.floor); }
+      else start(fresh);
+    }
+  }, function (e) {
+    if (e.auth) return;
+    if (!d) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'بارگذاری نشد. اولین بار باید با اینترنت باز شود.') + '</div>';
+    else setNet(!!e.server);
+  });
+}
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+boot();
+
+function findPerson(name) { return S.people.filter(function (p) { return p.name === name; })[0] || null; }
+
+function pickName() {
+  var h = '<p>نام خودت را انتخاب کن:</p><div class="pick">';
+  S.people.forEach(function (p) {
+    var range = p.from && p.to < 9999999 ? '<small>' + p.from + ' تا ' + p.to + '</small>' : '';
+    h += '<button data-me="' + esc(p.name) + '">' + esc(p.name) + range + '</button>';
+  });
+  h += '<button data-me="">همهٔ طبقه‌ها</button></div>';
+  el('main').innerHTML = h; el('prog').style.width = '0';
+  el('nav').innerHTML = ''; el('sub').textContent = S.init.label || '';
+}
+function myFloors() {
+  if (!S.me) return S.init.floors;
+  return S.init.floors.filter(function (f) { return S.from <= f.lastRoom && S.to >= f.firstRoom; });
+}
+function choose(me) {
+  S.me = me; mem('rc_me', me);
+  var p = findPerson(me);
+  S.from = p ? p.from : 0; S.to = p ? p.to : 9999999;
+  var fl = myFloors(), last = mem('rc_floor');
+  var f = fl.filter(function (x) { return x.name === last; })[0] || fl[0];
+  if (!f) { el('nav').innerHTML = ''; el('main').innerHTML = '<div class="msg">این دوره طبقه‌ای به نام شما ثبت نشده.</div><button class="who" data-who="1">تغییر نام</button>'; return; }
+  loadFloor(f.name);
+  preload(fl.filter(function (x) { return x.name !== f.name; }));
+}
+function loadFloor(name) {
+  S.floor = name; mem('rc_floor', name);
+  var cached = cacheGet(name);
+  if (cached) { S.rooms = overlay(cached, name); render(); window.scrollTo(0, 0); }
+  else el('main').innerHTML = '<div class="msg">در حال بارگذاری ' + esc(name) + '…</div>';
+  api('floor', { name: name, from: S.from, to: S.to, pid: S.init.pid }).then(function (rows) {
+    cacheSet(name, rows);
+    if (!qLoad().length) setNet(true);
+    if (S.floor !== name) return;
+    var fresh = overlay(rows, name), a = document.activeElement;
+    if (JSON.stringify(fresh) === JSON.stringify(S.rooms)) return;
+    if (cached && a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;  // وسط تایپ صفحه عوض نشود
+    S.rooms = fresh; render(); if (!cached) window.scrollTo(0, 0);
+  }, function (e) {
+    if (e.auth) return;
+    setNet(!!e.server);
+    if (!cached && S.floor === name) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'اینترنت وصل نیست و ' + esc(name) + ' هنوز روی گوشی ذخیره نشده.<br>با وصل شدن اینترنت دوباره بزنید.') + '</div>';
+  });
+}
+function status(r) {
+  if (r.note === GUEST) return ['guest', 'مهمان دارد'];
+  if (r.note === OOS) return ['oos', OOS];
+  if (r.note && r.note !== NO_GUEST) return ['defect', 'نقص'];
+  var n = r.items.filter(Boolean).length;
+  if (n === 7) return ['done', 'چک شد'];
+  return n ? ['part', 'ناقص'] : ['', 'مانده'];
+}
+function card(i) {
+  var r = S.rooms[i], s = status(r), h = '';
+  h += '<div class="room ' + s[0] + '" id="r' + i + '"><div class="top"><span class="num">' + esc(r.room) + '</span><span class="st">' + s[1] + '</span></div>';
+  var c = (S.init.carry || {})[r.room];
+  if (c) h += '<div class="carry' + (c.d ? ' d' : '') + '">' + (c.m ? '⚠ ' + c.m + ' دوره چک نشده' : 'نقص دورهٔ قبل: ' + esc(c.d)) + '</div>';
+  h += '<div class="grid">';
+  r.items.forEach(function (v, k) { h += '<button class="t' + (v ? ' on' : '') + '" data-i="' + i + '" data-k="' + k + '">' + LABELS[k] + '</button>'; });
+  h += '<button class="t' + (r.ap ? ' on' : '') + '" data-i="' + i + '" data-k="ap">AP</button></div>';
+  h += '<div class="acts"><button class="big all" data-i="' + i + '" data-a="all">همه ✓</button><button class="big gst" data-i="' + i + '" data-a="guest">مهمان دارد</button><button class="big oosb" data-i="' + i + '" data-a="oos">خارج از سرویس</button></div>';
+  var note = (r.note === GUEST || r.note === NO_GUEST || r.note === OOS) ? '' : r.note;
+  h += '<textarea data-i="' + i + '" dir="rtl" placeholder="توضیحات و نواقص (اختیاری)">' + esc(note) + '</textarea>';
+  if (r.ap) h += '<div class="macbox"><label>MAC اکسس پوینت</label><input class="mac" id="mac' + i + '" data-i="' + i + '" dir="ltr" autocomplete="off" autocapitalize="characters" placeholder="AA:BB:CC:DD:EE:FF" value="' + esc(r.mac || '') + '"></div>';
+  h += '</div>';
+  return h;
+}
+function render() {
+  // دکمهٔ بازگشت و طبقه‌ها داخل نوار بالا (چسبیده به بالای صفحه) تا موقع پایین رفتن هم دیده شوند
+  var nav = '<button class="back" data-who="1">→ بازگشت</button><div class="chips">';
+  myFloors().forEach(function (f) { nav += '<button class="chip' + (f.name === S.floor ? ' on' : '') + '" data-f="' + esc(f.name) + '">' + esc(f.name) + '</button>'; });
+  el('nav').innerHTML = nav + '</div>';
+  var on = document.querySelector('.chip.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+  var h = '';
+  var carried = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room]; }).map(function (r) { return r.room; });
+  if (carried.length) h += '<div class="notice">از دورهٔ قبل پیگیری شود: ' + carried.join('، ') + '</div>';
+  S.rooms.forEach(function (r, i) { h += card(i); });
+  h += '<div class="credit" dir="ltr">Made by danielramezani</div>';
+  el('main').innerHTML = h; progress();
+}
+function redraw(i) { var c = el('r' + i); if (c) c.outerHTML = card(i); progress(); }
+function progress() {
+  var done = S.rooms.filter(function (r) { return status(r)[0] !== ''; }).length;
+  el('prog').style.width = (S.rooms.length ? Math.round(100 * done / S.rooms.length) : 0) + '%';
+  // خط اول: نام و پیشرفت طبقه؛ خط دوم: نام و تاریخ دوره
+  el('sub').innerHTML = esc((S.me ? S.me + ' | ' : '') + S.floor + ': ' + done + ' از ' + S.rooms.length) +
+    (S.init.label ? '<br>' + esc(S.init.label) : '');
+}
+// تغییر در صف گوشی (جایگزین تغییر قبلی همان خانه) + ذخیرهٔ طبقه روی گوشی + ارسال
+function save(i, field, value) {
+  var r = S.rooms[i], key = S.init.pid + '|' + S.floor + '|' + r.row + '|' + field;
+  var q = qLoad().filter(function (x) { return x.key !== key; });
+  q.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), key: key, pid: S.init.pid, floor: S.floor,
+    row: r.row, room: r.room, field: field, value: value, who: S.me || '' });
+  qStore(q);
+  cacheSet(S.floor, S.rooms);
+  setNet(NET.online && navigator.onLine !== false);
+  sync();
+}
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  if (b.hasAttribute('data-tok')) {
+    var v = (el('tok').value || '').replace(/[^A-Za-z0-9]/g, '');
+    if (!v) return;
+    TOKEN = v; mem('rc_k', v); mem('rc_init', null); mem('rc_me', null);
+    el('main').innerHTML = '<div class="msg">در حال بارگذاری…</div>'; boot(); return;
+  }
+  if (b.hasAttribute('data-me')) { choose(b.getAttribute('data-me')); return; }
+  if (b.hasAttribute('data-who')) { pickName(); return; }
+  if (b.hasAttribute('data-f')) { loadFloor(b.getAttribute('data-f')); return; }
+  if (!b.hasAttribute('data-i')) return;
+  var i = +b.getAttribute('data-i'), r = S.rooms[i];
+  var k = b.getAttribute('data-k'), a = b.getAttribute('data-a');
+  if (k === 'ap') {
+    // AP و MAC در لیست دائمی می‌مانند؛ برداشتن تیک یعنی حذف از لیست، پس اول تأیید گرفته می‌شود
+    if (r.ap && !confirm('اکسس پوینت اتاق ' + r.room + (r.mac ? ' (MAC: ' + r.mac + ')' : '') + ' از لیست دائمی حذف شود؟')) return;
+    r.ap = !r.ap; if (!r.ap) r.mac = '';
+    save(i, 'ap', r.ap);
+    redraw(i);
+    if (r.ap) { var m = el('mac' + i); if (m) m.focus(); }
+    return;
+  }
+  else if (k !== null) { k = +k; r.items[k] = !r.items[k]; save(i, 'i' + k, r.items[k]); }
+  else if (a === 'all') {
+    var v = !r.items.every(Boolean);
+    r.items = r.items.map(function () { return v; });
+    if (v && (r.note === GUEST || r.note === OOS)) { r.note = ''; save(i, 'note', ''); }
+    save(i, 'all', v);
+  } else if (a === 'guest') { r.note = r.note === GUEST ? '' : GUEST; save(i, 'note', r.note); }
+  else if (a === 'oos') { r.note = r.note === OOS ? '' : OOS; save(i, 'note', r.note); }
+  redraw(i);
+});
+document.addEventListener('change', function (e) {
+  var t = e.target; if (!t.hasAttribute('data-i')) return;
+  var i = +t.getAttribute('data-i'), r = S.rooms[i];
+  if (!r) return;
+  if (t.tagName === 'TEXTAREA') { r.note = t.value.trim(); save(i, 'note', r.note); redraw(i); }
+  else if (t.classList.contains('mac')) {
+    var raw = t.value.trim(), mac = raw ? normMac(raw) : '';
+    if (mac === null) { toast('MAC باید ۱۲ کاراکتر باشد، مثل AA:BB:CC:DD:EE:FF', 4000); t.value = r.mac || ''; return; }
+    r.mac = mac; r.ap = true; save(i, 'mac', mac); redraw(i);
+    toast(mac ? 'MAC ثبت شد' : 'MAC پاک شد');
+  }
+});
