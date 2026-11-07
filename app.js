@@ -166,7 +166,7 @@ function start(d) {
   // بار اول: کارشناس از روی کد شخصی خودش شناخته می‌شود (مدیر: همهٔ طبقه‌ها)
   var me = mem('rc_me');
   if (me === null || (me !== '' && !findPerson(me))) me = findPerson(d.me) ? d.me : (d.admin ? '' : null);
-  if (me !== null) choose(me); else pickName();
+  if (me !== null) choose(me, true); else pickName();
   sync();
 }
 // اول دادهٔ ذخیره‌شده روی گوشی نشان داده می‌شود (بدون اینترنت هم)، بعد نسخهٔ تازه از شیت
@@ -208,14 +208,15 @@ function myFloors() {
   if (!S.me) return S.init.floors;
   return S.init.floors.filter(function (f) { return S.from <= f.lastRoom && S.to >= f.firstRoom; });
 }
-function choose(me) {
+// restore = باز شدن دوبارهٔ برنامه (همان صفحهٔ قبلی)؛ انتخاب اسم از لیست همیشه با اتاق‌ها شروع می‌شود
+function choose(me, restore) {
   S.me = me; mem('rc_me', me);
   var p = findPerson(me);
   S.from = p ? p.from : 0; S.to = p ? p.to : 9999999;
   var fl = myFloors(), last = mem('rc_floor');
   var f = fl.filter(function (x) { return x.name === last; })[0] || fl[0];
   if (!f) { el('nav').innerHTML = ''; el('main').innerHTML = '<div class="msg">این دوره طبقه‌ای به نام شما ثبت نشده.</div><button class="who" data-who="1">تغییر نام</button>'; return; }
-  var wasAps = mem('rc_view') === 'aps';
+  var wasAps = !!restore && mem('rc_view') === 'aps';
   loadFloor(f.name);
   if (wasAps) loadAps();  // بعد از رفرش همان لیست اکسس پوینت‌ها بماند
   preload(allFloorsOrdered(f.name));
