@@ -186,6 +186,9 @@ function boot() {
     else setNet(!!e.server);
   });
 }
+// آیفون user-scalable=no را نادیده می‌گیرد؛ زوم با دو انگشت این‌جا گرفته می‌شود (دوبار ضربه را CSS می‌گیرد)
+['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) { document.addEventListener(t, function (e) { e.preventDefault(); }, { passive: false }); });
+document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (r) { r.update(); }).catch(function () {});
 boot();
 
