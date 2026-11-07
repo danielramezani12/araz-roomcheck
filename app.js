@@ -202,7 +202,7 @@ function pickName() {
     h += '<button data-me="' + esc(p.name) + '">' + esc(p.name) + range + '</button>';
   });
   h += '<button data-me="">همهٔ طبقه‌ها</button>';
-  h += '<button class="apbtn" data-aps="1"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 18.5a1.5 1.5 0 1 0 0 .01M8.5 15a5 5 0 0 1 7 0M5.5 12a9 9 0 0 1 13 0M2.5 9a13 13 0 0 1 19 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>اکسس پوینت‌ها</button></div>';
+  h += '<button class="apbtn" data-aps="1"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="19" r="1.8" fill="currentColor"/><path d="M8.46 15.46A5 5 0 0 1 15.54 15.46M5.28 12.28A9.5 9.5 0 0 1 18.72 12.28M2.1 9.1A14 14 0 0 1 21.9 9.1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>اکسس پوینت‌ها</button></div>';
   S.apView = false;
   el('main').innerHTML = h; el('prog').style.width = '0';
   el('nav').innerHTML = ''; el('sub').textContent = S.init.label || '';
