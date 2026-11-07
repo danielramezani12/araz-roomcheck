@@ -266,13 +266,20 @@ function renderNav() {
 function render() {
   renderNav(); S.shown = S.floor;
   var h = '';
-  var carried = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room]; }).map(function (r) { return r.room; });
-  if (carried.length) h += '<div class="notice">از دورهٔ قبل پیگیری شود: ' + carried.join('، ') + '</div>';
+  h += '<div id="notice"></div>';
   S.rooms.forEach(function (r, i) { h += card(i); });
   el('main').innerHTML = h; progress();
 }
 function redraw(i) { var c = el('r' + i); if (c) c.outerHTML = card(i); progress(); }
+// «از دورهٔ قبل پیگیری شود»: فقط اتاق‌هایی که این دوره هنوز سراغشان نرفته‌اند (هر وضعیتی غیر از «مانده» یعنی رفته)
+function notice() {
+  var n = el('notice'); if (!n) return;
+  var left = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room] && status(r)[0] === ''; }).map(function (r) { return r.room; });
+  n.className = left.length ? 'notice' : '';
+  n.textContent = left.length ? 'از دورهٔ قبل پیگیری شود: ' + left.join('، ') : '';
+}
 function progress() {
+  notice();
   var done = S.rooms.filter(function (r) { return status(r)[0] !== ''; }).length;
   el('prog').style.width = (S.rooms.length ? Math.round(100 * done / S.rooms.length) : 0) + '%';
   // خط اول: نام و پیشرفت طبقه؛ خط دوم: نام و تاریخ دوره
