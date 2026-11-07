@@ -1,7 +1,7 @@
 :root{--bg:#eef1f0;--card:#fff;--fg:#1d2624;--muted:#66706d;--line:#d9dedc;--ok:#2e7d4f;--okbg:#e2f3e8;--bad:#c0392b;--guestbg:#e4e4e4;--head:#2f3b38}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* گوشی: صفحه اندازهٔ صفحهٔ گوشی، بدون زوم و بدون لغزیدن به چپ و راست؛ خانه‌های تایپ ۱۶px تا آیفون خودش زوم نکند */
-html,body{overscroll-behavior-y:none;overflow-x:hidden;max-width:100%;touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html,body{overscroll-behavior-y:none;overflow-x:clip;max-width:100%;touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 input,textarea,select{font-size:16px!important}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:Tahoma,"Segoe UI",Arial,sans-serif;font-size:16px}
 header{position:sticky;top:0;z-index:5;background:var(--head);color:#fff;padding:12px 16px 10px}
@@ -17,7 +17,7 @@ header h1{margin:0;font-size:18px}
 .sub{font-size:13px;opacity:.85;margin-top:3px;line-height:1.7}
 .bar{height:7px;background:rgba(255,255,255,.25);border-radius:4px;margin-top:8px;overflow:hidden}
 .bar i{display:block;height:100%;width:0;background:#7ddc9f;transition:width .3s}
-main{padding:12px 12px 8px;max-width:640px;margin:0 auto}
+main{padding:12px 12px 8px;max-width:640px;margin:0 auto;overflow-x:hidden}
 .chips{display:flex;gap:6px;overflow-x:auto;flex:1;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;padding:8px 14px;border-radius:20px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);font:inherit;font-size:14px;color:#fff}
