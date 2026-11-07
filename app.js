@@ -271,12 +271,15 @@ function render() {
   el('main').innerHTML = h; progress();
 }
 function redraw(i) { var c = el('r' + i); if (c) c.outerHTML = card(i); progress(); }
-// «از دورهٔ قبل پیگیری شود»: فقط اتاق‌هایی که این دوره هنوز سراغشان نرفته‌اند (هر وضعیتی غیر از «مانده» یعنی رفته)
+// بالای طبقه: اتاق‌هایی که این دوره هنوز چک نشده‌اند (وضعیت «مانده»)، و از بین آن‌ها اتاق‌های پیگیری دورهٔ قبل
 function notice() {
   var n = el('notice'); if (!n) return;
-  var left = S.rooms.filter(function (r) { return (S.init.carry || {})[r.room] && status(r)[0] === ''; }).map(function (r) { return r.room; });
+  var left = S.rooms.filter(function (r) { return status(r)[0] === ''; });
+  var carry = left.filter(function (r) { return (S.init.carry || {})[r.room]; });
+  var rooms = function (a) { return a.map(function (r) { return esc(r.room); }).join('، '); };
   n.className = left.length ? 'notice' : '';
-  n.textContent = left.length ? 'از دورهٔ قبل پیگیری شود: ' + left.join('، ') : '';
+  n.innerHTML = left.length ? 'هنوز چک نشده (' + left.length + '): ' + rooms(left) +
+    (carry.length ? '<br><b>از دورهٔ قبل پیگیری شود: ' + rooms(carry) + '</b>' : '') : '';
 }
 function progress() {
   notice();
