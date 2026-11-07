@@ -140,7 +140,7 @@ function preload(list) {
       if (run !== PRE.run) return;
       Object.keys(map).forEach(function (n) {
         cacheSet(n, map[n]);
-        if (n === S.floor && S.shown !== n) { S.rooms = view(map[n], n); render(); }  // طبقه‌ای که منتظرش بود
+        if (!S.apView && n === S.floor && S.shown !== n) { S.rooms = view(map[n], n); render(); }  // طبقه‌ای که منتظرش بود
       });
       PRE.done += part.length; setNet(true); next();
     }, function (e) {
@@ -212,11 +212,13 @@ function choose(me) {
   var fl = myFloors(), last = mem('rc_floor');
   var f = fl.filter(function (x) { return x.name === last; })[0] || fl[0];
   if (!f) { el('nav').innerHTML = ''; el('main').innerHTML = '<div class="msg">این دوره طبقه‌ای به نام شما ثبت نشده.</div><button class="who" data-who="1">تغییر نام</button>'; return; }
+  var wasAps = mem('rc_view') === 'aps';
   loadFloor(f.name);
+  if (wasAps) loadAps();  // بعد از رفرش همان لیست اکسس پوینت‌ها بماند
   preload(allFloorsOrdered(f.name));
 }
 function loadFloor(name) {
-  S.apView = false;
+  S.apView = false; mem('rc_view', null);
   S.floor = name; S.shown = null; mem('rc_floor', name);
   var cached = cacheGet(name);
   renderNav();  // دکمهٔ بازگشت و طبقه‌ها همیشه هست، حتی وقتی طبقه هنوز نیامده
@@ -225,7 +227,7 @@ function loadFloor(name) {
   api('floor', { name: name, from: 0, to: 9999999, pid: S.init.pid }).then(function (rows) {
     cacheSet(name, rows);
     if (!qLoad().length) setNet(true);
-    if (S.floor !== name) return;
+    if (S.floor !== name || S.apView) return;  // کاربر رفته سراغ طبقهٔ دیگر یا لیست اکسس پوینت‌ها
     var fresh = view(rows, name), a = document.activeElement;
     if (JSON.stringify(fresh) === JSON.stringify(S.rooms)) return;
     if (cached && a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;  // وسط تایپ صفحه عوض نشود
@@ -233,7 +235,7 @@ function loadFloor(name) {
   }, function (e) {
     if (e.auth) return;
     setNet(!!e.server);
-    if (!cached && S.floor === name) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'اینترنت وصل نیست و ' + esc(name) + ' هنوز روی گوشی ذخیره نشده.<br>با وصل شدن اینترنت دوباره بزنید.') + '</div>';
+    if (!cached && S.floor === name && !S.apView) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'اینترنت وصل نیست و ' + esc(name) + ' هنوز روی گوشی ذخیره نشده.<br>با وصل شدن اینترنت دوباره بزنید.') + '</div>';
   });
 }
 // ---------- لیست اکسس پوینت‌ها (از لیست دائمی فایل اصلی؛ روی گوشی هم ذخیره می‌شود) ----------
@@ -242,7 +244,7 @@ function fetchAps() {
   return api('aps').then(function (list) { mem(apsKey(), JSON.stringify(list)); return list; });
 }
 function loadAps() {
-  S.apView = true; S.shown = null;
+  S.apView = true; S.shown = null; mem('rc_view', 'aps');
   renderNav(); window.scrollTo(0, 0);
   el('prog').style.width = '0';
   el('sub').innerHTML = esc((S.me ? S.me + ' | ' : '') + 'اکسس پوینت‌ها') + (S.init.label ? '<br>' + esc(S.init.label) : '');
@@ -308,6 +310,7 @@ function renderNav() {
   var on = document.querySelector('.chip.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 function render() {
+  if (S.apView) return;  // وقتی لیست اکسس پوینت‌ها باز است، جوابِ دیرتر رسیدهٔ طبقه‌ها صفحه را عوض نکند
   renderNav(); S.shown = S.floor;
   var h = '';
   h += '<div id="notice"></div>';
