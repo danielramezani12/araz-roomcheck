@@ -132,6 +132,7 @@ function preload(list) {
     var part = names.slice(PRE.done, PRE.done + 3);
     if (!part.length) {
       PRE.busy = false; setNet(true);
+      fetchAps();
       toast('✓ همهٔ اتاق‌های هتل روی گوشی ذخیره شد؛ بدون اینترنت هم باز می‌شود', 3500);
       return;
     }
@@ -153,7 +154,8 @@ function missingFloors() {
 }
 window.addEventListener('online', function () {
   if (!S.init || S.me === null || S.me === undefined) return;
-  if (S.floor && S.shown !== S.floor) loadFloor(S.floor);
+  if (S.apView) loadAps();
+  else if (S.floor && S.shown !== S.floor) loadFloor(S.floor);
   if (!PRE.busy && missingFloors().length) preload(allFloorsOrdered(S.floor));
 });
 
@@ -214,6 +216,7 @@ function choose(me) {
   preload(allFloorsOrdered(f.name));
 }
 function loadFloor(name) {
+  S.apView = false;
   S.floor = name; S.shown = null; mem('rc_floor', name);
   var cached = cacheGet(name);
   renderNav();  // دکمهٔ بازگشت و طبقه‌ها همیشه هست، حتی وقتی طبقه هنوز نیامده
@@ -232,6 +235,46 @@ function loadFloor(name) {
     setNet(!!e.server);
     if (!cached && S.floor === name) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'اینترنت وصل نیست و ' + esc(name) + ' هنوز روی گوشی ذخیره نشده.<br>با وصل شدن اینترنت دوباره بزنید.') + '</div>';
   });
+}
+// ---------- لیست اکسس پوینت‌ها (از لیست دائمی فایل اصلی؛ روی گوشی هم ذخیره می‌شود) ----------
+function apsKey() { return 'rc_aps'; }
+function fetchAps() {
+  return api('aps').then(function (list) { mem(apsKey(), JSON.stringify(list)); return list; });
+}
+function loadAps() {
+  S.apView = true; S.shown = null;
+  renderNav(); window.scrollTo(0, 0);
+  el('prog').style.width = '0';
+  el('sub').innerHTML = esc((S.me ? S.me + ' | ' : '') + 'اکسس پوینت‌ها') + (S.init.label ? '<br>' + esc(S.init.label) : '');
+  var cached = memJson(apsKey(), null);
+  if (cached) renderAps(cached);
+  else el('main').innerHTML = '<div class="msg">در حال بارگذاری لیست اکسس پوینت‌ها…</div>';
+  fetchAps().then(function (list) { if (!S.apView) return; if (el('apq')) { S.aps = list; apFilter(); } else renderAps(list); }, function (e) {
+    if (e.auth) return;
+    setNet(!!e.server);
+    if (!cached && S.apView) el('main').innerHTML = '<div class="msg">' + (e.server ? esc(e.message) : 'اینترنت وصل نیست و لیست اکسس پوینت‌ها هنوز روی گوشی ذخیره نشده.') + '</div>';
+  });
+}
+function renderAps(list) {
+  var q = (el('apq') && el('apq').value) || '';
+  var h = '<input id="apq" class="apq" placeholder="جستجو: شماره اتاق، طبقه یا MAC" value="' + esc(q) + '" autocomplete="off">';
+  h += '<div class="apcount">' + list.length + ' اتاق دارای اکسس پوینت' + (list.filter(function (a) { return !a.mac; }).length ? ' | ' + list.filter(function (a) { return !a.mac; }).length + ' اتاق بدون MAC' : '') + '</div><div id="aplist"></div>';
+  el('main').innerHTML = h;
+  S.aps = list; apFilter();
+  el('apq').addEventListener('input', apFilter);
+}
+function apFilter() {
+  var q = String(el('apq').value || '').trim().toUpperCase().replace(/[-.\s]/g, ':');
+  var list = (S.aps || []).filter(function (a) {
+    return !q || String(a.room).indexOf(q) >= 0 || String(a.mac).toUpperCase().indexOf(q) >= 0 || String(a.floor) === q;
+  });
+  var h = '', last = null;
+  list.forEach(function (a) {
+    if (a.floor !== last) { h += '<div class="apfloor">طبقه ' + esc(a.floor) + '</div>'; last = a.floor; }
+    h += '<div class="aprow"><span class="aproom">' + esc(a.room) + '</span><span class="apmac" dir="ltr">' + (a.mac ? esc(a.mac) : '<i>MAC ثبت نشده</i>') + '</span>' +
+      '<span class="apmeta">' + esc([a.date, a.who].filter(Boolean).join(' | ')) + '</span></div>';
+  });
+  el('aplist').innerHTML = h || '<div class="msg">چیزی پیدا نشد.</div>';
 }
 function status(r) {
   if (r.note === GUEST) return ['guest', 'مهمان دارد'];
@@ -259,7 +302,8 @@ function card(i) {
 // دکمهٔ بازگشت و طبقه‌ها داخل نوار بالا (چسبیده به بالای صفحه) تا موقع پایین رفتن هم دیده شوند
 function renderNav() {
   var nav = '<button class="back" data-who="1">→ بازگشت</button><div class="chips">';
-  myFloors().forEach(function (f) { nav += '<button class="chip' + (f.name === S.floor ? ' on' : '') + '" data-f="' + esc(f.name) + '">' + esc(f.name) + '</button>'; });
+  myFloors().forEach(function (f) { nav += '<button class="chip' + (!S.apView && f.name === S.floor ? ' on' : '') + '" data-f="' + esc(f.name) + '">' + esc(f.name) + '</button>'; });
+  nav += '<button class="chip apchip' + (S.apView ? ' on' : '') + '" data-aps="1">اکسس پوینت‌ها</button>';
   el('nav').innerHTML = nav + '</div>';
   var on = document.querySelector('.chip.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
@@ -313,6 +357,7 @@ document.addEventListener('click', function (e) {
   if (b.hasAttribute('data-me')) { choose(b.getAttribute('data-me')); return; }
   if (b.hasAttribute('data-who')) { pickName(); return; }
   if (b.hasAttribute('data-f')) { loadFloor(b.getAttribute('data-f')); return; }
+  if (b.hasAttribute('data-aps')) { loadAps(); return; }
   if (!b.hasAttribute('data-i')) return;
   var i = +b.getAttribute('data-i'), r = S.rooms[i];
   var k = b.getAttribute('data-k'), a = b.getAttribute('data-a');
