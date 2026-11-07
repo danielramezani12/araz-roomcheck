@@ -13,6 +13,7 @@ function toast(m, ms) { var t = el('toast'); t.textContent = m; t.classList.add(
 function mem(k, v) { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } }
 function memJson(k, d) { try { var v = mem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
 // ---------- کد شخصی کارشناس (از لینک ?k=… یک بار روی گوشی ذخیره می‌شود) ----------
+mem('rc_view', null);  // نسخه‌های قبلی این را نگه می‌داشتند
 var TOKEN = (function () {
   var m = location.search.match(/[?&]k=([A-Za-z0-9]+)/);
   if (m) { mem('rc_k', m[1]); return m[1]; }
@@ -166,7 +167,7 @@ function start(d) {
   // بار اول: کارشناس از روی کد شخصی خودش شناخته می‌شود (مدیر: همهٔ طبقه‌ها)
   var me = mem('rc_me');
   if (me === null || (me !== '' && !findPerson(me))) me = findPerson(d.me) ? d.me : (d.admin ? '' : null);
-  if (me !== null) choose(me, true); else pickName();
+  if (me !== null) choose(me); else pickName();
   sync();
 }
 // اول دادهٔ ذخیره‌شده روی گوشی نشان داده می‌شود (بدون اینترنت هم)، بعد نسخهٔ تازه از شیت
@@ -177,7 +178,7 @@ function boot() {
   api('init').then(function (fresh) {
     // اگر دوره عوض شده یا اطلاعات تغییر کرده، صفحه با دادهٔ تازه ساخته می‌شود
     if (!d || JSON.stringify(fresh) !== JSON.stringify(d)) {
-      if (d && fresh.pid === d.pid) { S.init = fresh; S.people = fresh.people || []; mem('rc_init', JSON.stringify(fresh)); if (S.floor) loadFloor(S.floor); }
+      if (d && fresh.pid === d.pid) { S.init = fresh; S.people = fresh.people || []; mem('rc_init', JSON.stringify(fresh)); if (S.floor && !S.apView) loadFloor(S.floor); }
       else start(fresh);
     }
   }, function (e) {
@@ -208,21 +209,19 @@ function myFloors() {
   if (!S.me) return S.init.floors;
   return S.init.floors.filter(function (f) { return S.from <= f.lastRoom && S.to >= f.firstRoom; });
 }
-// restore = باز شدن دوبارهٔ برنامه (همان صفحهٔ قبلی)؛ انتخاب اسم از لیست همیشه با اتاق‌ها شروع می‌شود
-function choose(me, restore) {
+// همیشه با اتاق‌ها شروع می‌شود؛ لیست اکسس پوینت‌ها فقط با زدن دکمه‌اش باز می‌شود
+function choose(me) {
   S.me = me; mem('rc_me', me);
   var p = findPerson(me);
   S.from = p ? p.from : 0; S.to = p ? p.to : 9999999;
   var fl = myFloors(), last = mem('rc_floor');
   var f = fl.filter(function (x) { return x.name === last; })[0] || fl[0];
   if (!f) { el('nav').innerHTML = ''; el('main').innerHTML = '<div class="msg">این دوره طبقه‌ای به نام شما ثبت نشده.</div><button class="who" data-who="1">تغییر نام</button>'; return; }
-  var wasAps = !!restore && mem('rc_view') === 'aps';
   loadFloor(f.name);
-  if (wasAps) loadAps();  // بعد از رفرش همان لیست اکسس پوینت‌ها بماند
   preload(allFloorsOrdered(f.name));
 }
 function loadFloor(name) {
-  S.apView = false; mem('rc_view', null);
+  S.apView = false;
   S.floor = name; S.shown = null; mem('rc_floor', name);
   var cached = cacheGet(name);
   renderNav();  // دکمهٔ بازگشت و طبقه‌ها همیشه هست، حتی وقتی طبقه هنوز نیامده
@@ -248,7 +247,7 @@ function fetchAps() {
   return api('aps').then(function (list) { mem(apsKey(), JSON.stringify(list)); return list; });
 }
 function loadAps() {
-  S.apView = true; S.shown = null; mem('rc_view', 'aps');
+  S.apView = true; S.shown = null;
   renderNav(); window.scrollTo(0, 0);
   el('prog').style.width = '0';
   el('sub').innerHTML = esc((S.me ? S.me + ' | ' : '') + 'اکسس پوینت‌ها') + (S.init.label ? '<br>' + esc(S.init.label) : '');
