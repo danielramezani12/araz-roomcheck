@@ -86,6 +86,8 @@ function applyField(r, f, v) {
 function overlay(rows, floor) {
   rows = JSON.parse(JSON.stringify(rows));
   qLoad().forEach(function (x) {
+    // MAC منتقل‌شده به اتاق دیگر (هر طبقه‌ای): از اتاق قبلی برداشته شود
+    if (x.field === 'mac' && x.value) rows.forEach(function (y) { if (y.mac === x.value && Number(y.room) !== Number(x.room)) { y.ap = false; y.mac = ''; } });
     if (x.pid !== S.init.pid || x.floor !== floor) return;
     var r = rows.filter(function (y) { return y.row === x.row; })[0];
     if (r) applyField(r, x.field, x.value);
@@ -245,8 +247,42 @@ function loadFloor(name) {
 }
 // ---------- لیست اکسس پوینت‌ها (از لیست دائمی فایل اصلی؛ روی گوشی هم ذخیره می‌شود) ----------
 function apsKey() { return 'rc_aps'; }
+// یک تغییر AP روی لیست: mac = MAC جدید (همان MAC از هر اتاق دیگر برداشته می‌شود = انتقال)، remove = حذف اتاق از لیست
+function apApply(list, room, mac, remove) {
+  room = Number(room);
+  if (mac) list = list.filter(function (a) { return a.mac !== mac || a.room === room; });
+  var cur = list.filter(function (a) { return a.room === room; })[0];
+  if (remove) return list.filter(function (a) { return a.room !== room; });
+  if (!cur) { cur = { room: room, floor: Math.floor(room / 100), mac: '', date: '', who: S.me || '' }; list.push(cur); }
+  if (mac !== null && mac !== undefined) cur.mac = mac;
+  cur.who = S.me || cur.who;
+  return list.sort(function (a, b) { return a.room - b.room; });
+}
+// تغییرهای AP که هنوز به شیت نرفته‌اند روی لیست رسیده از سرور
+function apOverlay(list) {
+  qLoad().forEach(function (x) {
+    if (x.field === 'ap') list = apApply(list, x.room, null, x.value !== true);
+    else if (x.field === 'mac') list = apApply(list, x.room, x.value || '', false);
+  });
+  return list;
+}
+function apsLocal() { return memJson(apsKey(), null) || S.aps || []; }
+function apLocal(room, mac, remove) {
+  var list = apApply(apsLocal(), room, mac, remove);
+  mem(apsKey(), JSON.stringify(list)); S.aps = list;
+}
+// اتاق دیگری که همین MAC را دارد
+function apOwner(mac, room) {
+  return apsLocal().filter(function (a) { return a.mac && a.mac === mac && Number(a.room) !== Number(room); })[0] || null;
+}
+// AP از اتاق قبلی برداشته شد: روی نسخهٔ گوشیِ طبقهٔ آن اتاق هم اعمال شود
+function apClearRoom(room) {
+  var fname = 'طبقه ' + Math.floor(Number(room) / 100), full = cacheGet(fname);
+  if (full) { full.forEach(function (r) { if (Number(r.room) === Number(room)) { r.ap = false; r.mac = ''; } }); cacheSet(fname, full); }
+  S.rooms.forEach(function (r, i) { if (S.floor === fname && Number(r.room) === Number(room)) { r.ap = false; r.mac = ''; redraw(i); } });
+}
 function fetchAps() {
-  return api('aps').then(function (list) { mem(apsKey(), JSON.stringify(list)); return list; });
+  return api('aps').then(function (list) { list = apOverlay(list); mem(apsKey(), JSON.stringify(list)); return list; });
 }
 function loadAps() {
   S.apView = true; S.shown = null;
@@ -271,9 +307,12 @@ function renderAps(list) {
   el('apq').addEventListener('input', apFilter);
 }
 function apFilter() {
-  var q = String(el('apq').value || '').trim().toUpperCase().replace(/[-.\s]/g, ':');
+  // MAC با یا بدون جداکننده: 12:be:dx ، 12-BE-DX و 12bedx همه پیدا می‌شوند
+  var q = String(el('apq').value || '').trim().toUpperCase();
+  var qn = q.replace(/[^0-9A-Z]/g, '');
   var list = (S.aps || []).filter(function (a) {
-    return !q || String(a.room).indexOf(q) >= 0 || String(a.mac).toUpperCase().indexOf(q) >= 0 || String(a.floor) === q;
+    return !q || String(a.room).indexOf(q) >= 0 || String(a.floor) === q ||
+      (qn && String(a.mac).toUpperCase().replace(/[^0-9A-Z]/g, '').indexOf(qn) >= 0);
   });
   var h = '', last = null;
   list.forEach(function (a) {
@@ -374,6 +413,7 @@ document.addEventListener('click', function (e) {
     if (r.ap && !confirm('اکسس پوینت اتاق ' + r.room + (r.mac ? ' (MAC: ' + r.mac + ')' : '') + ' از لیست دائمی حذف شود؟')) return;
     r.ap = !r.ap; if (!r.ap) r.mac = '';
     save(i, 'ap', r.ap);
+    apLocal(r.room, null, !r.ap);
     redraw(i);
     if (r.ap) { var m = el('mac' + i); if (m) m.focus(); }
     return;
@@ -396,7 +436,15 @@ document.addEventListener('change', function (e) {
   else if (t.classList.contains('mac')) {
     var raw = t.value.trim(), mac = raw ? normMac(raw) : '';
     if (mac === null) { toast('MAC باید ۱۲ کاراکتر باشد، مثل AA:BB:CC:DD:EE:FF', 4000); t.value = r.mac || ''; return; }
-    r.mac = mac; r.ap = true; save(i, 'mac', mac); redraw(i);
-    toast(mac ? 'MAC ثبت شد' : 'MAC پاک شد');
+    if (mac === (r.mac || '')) return;
+    // MAC تکراری = همان دستگاه از اتاق دیگر آمده؛ با تأیید منتقل و از اتاق قبلی حذف می‌شود
+    var dup = mac ? apOwner(mac, r.room) : null;
+    if (dup && !confirm('این MAC (' + mac + ') قبلاً برای اتاق ' + dup.room + ' ثبت شده است.\n\n' +
+        'اکسس پوینت به اتاق ' + r.room + ' منتقل شود و از اتاق ' + dup.room + ' حذف شود؟')) { t.value = r.mac || ''; return; }
+    r.mac = mac; r.ap = true; save(i, 'mac', mac);
+    apLocal(r.room, mac, false);
+    if (dup) apClearRoom(dup.room);
+    redraw(i);
+    toast(dup ? 'اکسس پوینت از اتاق ' + dup.room + ' به اتاق ' + r.room + ' منتقل شد' : mac ? 'MAC ثبت شد' : 'MAC پاک شد', 3500);
   }
 });
