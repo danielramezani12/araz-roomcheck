@@ -327,7 +327,7 @@ function closeSheet() { var d = el('sheet'); if (d) d.remove(); }
 function apRefresh() { if (S.apView && el('apq')) renderAps(apsLocal()); }
 function apMenu(room) {
   var a = apOf(room); if (!a) return;
-  sheet('<div class="sheettitle">اتاق ' + esc(a.room) + '<span dir="ltr">' + (a.mac ? esc(a.mac) : 'MAC ثبت نشده') + '</span></div>' +
+  sheet('<div class="sheettitle">اتاق ' + esc(a.room) + (a.mac ? '<span dir="ltr">' + esc(a.mac) + '</span>' : '<span class="nomac">MAC ثبت نشده</span>') + '</div>' +
     '<button class="sbtn" data-apact="move" data-room="' + a.room + '">انتقال به اتاق دیگر</button>' +
     '<button class="sbtn" data-apact="edit" data-room="' + a.room + '">ویرایش MAC</button>' +
     '<button class="sbtn danger" data-apact="del" data-room="' + a.room + '">حذف اکسس پوینت</button>' +

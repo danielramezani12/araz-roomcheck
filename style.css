@@ -88,3 +88,4 @@ textarea{display:block;width:100%;margin-top:8px;min-height:46px;border-radius:1
 .sbtn.ok{background:var(--ok);color:#fff;border:none;font-weight:bold}
 .sbtn.danger{color:var(--bad);border-color:#f0c4be}
 .sbtn.ghost{background:none;border:none;color:var(--muted)}
+.sheettitle span.nomac{font-family:inherit;color:var(--bad)}
