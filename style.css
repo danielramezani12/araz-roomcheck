@@ -75,3 +75,16 @@ textarea{display:block;width:100%;margin-top:8px;min-height:46px;border-radius:1
 .apmac i{font-family:Tahoma,Arial,sans-serif;font-style:normal;color:var(--bad);font-size:13px}
 .apmeta{font-size:12px;color:var(--muted);text-align:left}
 .pick .apbtn{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--head);color:#fff;border-color:var(--head);font-weight:bold}
+.aprow{cursor:pointer}
+.aprow:active{background:#e8f4ec}
+.apadd{display:block;width:100%;min-height:48px;margin-bottom:8px;border-radius:12px;border:2px dashed var(--ok);background:#fff;color:var(--ok);font:inherit;font-size:15px;font-weight:bold}
+.sheetbg{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center}
+.sheetbox{background:var(--bg);width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:16px 16px 28px;display:grid;gap:8px;max-height:85vh;overflow:auto}
+.sheettitle{font-weight:bold;font-size:17px;margin-bottom:4px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sheettitle span{font-family:monospace;font-weight:normal;color:var(--muted);font-size:14px}
+.sheetbox label{font-size:13px;color:var(--muted)}
+.sheetbox input{min-height:48px;border-radius:12px;border:2px solid var(--line);padding:10px;font:inherit;font-size:16px;background:#fff}
+.sbtn{min-height:52px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--fg);font:inherit;font-size:16px}
+.sbtn.ok{background:var(--ok);color:#fff;border:none;font-weight:bold}
+.sbtn.danger{color:var(--bad);border-color:#f0c4be}
+.sbtn.ghost{background:none;border:none;color:var(--muted)}

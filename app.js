@@ -88,6 +88,13 @@ function overlay(rows, floor) {
   qLoad().forEach(function (x) {
     // MAC منتقل‌شده به اتاق دیگر (هر طبقه‌ای): از اتاق قبلی برداشته شود
     if (x.field === 'mac' && x.value) rows.forEach(function (y) { if (y.mac === x.value && Number(y.room) !== Number(x.room)) { y.ap = false; y.mac = ''; } });
+    // کارهای صفحهٔ اکسس پوینت‌ها (بر اساس شماره اتاق)
+    if (x.field === 'apset') rows.forEach(function (y) {
+      if (Number(y.room) === Number(x.room)) { y.ap = true; y.mac = x.value || ''; }
+      else if (x.value && y.mac === x.value) { y.ap = false; y.mac = ''; }
+    });
+    if (x.field === 'apdel') rows.forEach(function (y) { if (Number(y.room) === Number(x.room)) { y.ap = false; y.mac = ''; } });
+    if (x.field === 'apset' || x.field === 'apdel') return;
     if (x.pid !== S.init.pid || x.floor !== floor) return;
     var r = rows.filter(function (y) { return y.row === x.row; })[0];
     if (r) applyField(r, x.field, x.value);
@@ -262,7 +269,8 @@ function apApply(list, room, mac, remove) {
 function apOverlay(list) {
   qLoad().forEach(function (x) {
     if (x.field === 'ap') list = apApply(list, x.room, null, x.value !== true);
-    else if (x.field === 'mac') list = apApply(list, x.room, x.value || '', false);
+    else if (x.field === 'mac' || x.field === 'apset') list = apApply(list, x.room, x.value || '', false);
+    else if (x.field === 'apdel') list = apApply(list, x.room, null, true);
   });
   return list;
 }
@@ -276,10 +284,100 @@ function apOwner(mac, room) {
   return apsLocal().filter(function (a) { return a.mac && a.mac === mac && Number(a.room) !== Number(room); })[0] || null;
 }
 // AP از اتاق قبلی برداشته شد: روی نسخهٔ گوشیِ طبقهٔ آن اتاق هم اعمال شود
-function apClearRoom(room) {
+function apClearRoom(room) { apSetRoom(room, false, ''); }
+// وضعیت AP یک اتاق روی نسخهٔ گوشیِ طبقه‌اش (و صفحهٔ باز)
+function apSetRoom(room, on, mac) {
   var fname = 'طبقه ' + Math.floor(Number(room) / 100), full = cacheGet(fname);
-  if (full) { full.forEach(function (r) { if (Number(r.room) === Number(room)) { r.ap = false; r.mac = ''; } }); cacheSet(fname, full); }
-  S.rooms.forEach(function (r, i) { if (S.floor === fname && Number(r.room) === Number(room)) { r.ap = false; r.mac = ''; redraw(i); } });
+  if (full) { full.forEach(function (r) { if (Number(r.room) === Number(room)) { r.ap = on; r.mac = on ? mac : ''; } }); cacheSet(fname, full); }
+  if (!S.apView) S.rooms.forEach(function (r, i) { if (S.floor === fname && Number(r.room) === Number(room)) { r.ap = on; r.mac = on ? mac : ''; redraw(i); } });
+}
+// یک کار صفحهٔ اکسس پوینت‌ها: در صف گوشی، روی لیست و طبقه‌های ذخیره‌شده، بعد ارسال
+function apOp(field, room, mac) {
+  room = Number(room);
+  var key = S.init.pid + '|ap|' + room + '|' + field;
+  var q = qLoad().filter(function (x) { return x.key !== key; });
+  q.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), key: key, pid: S.init.pid, floor: '', row: 0,
+    room: room, field: field, value: field === 'apset' ? (mac || '') : false, who: S.me || '' });
+  qStore(q);
+  if (field === 'apset') {
+    var dup = mac ? apOwner(mac, room) : null;
+    apLocal(room, mac || '', false); apSetRoom(room, true, mac || '');
+    if (dup) apSetRoom(dup.room, false, '');
+  } else { apLocal(room, null, true); apSetRoom(room, false, ''); }
+  setNet(NET.online && navigator.onLine !== false);
+  sync();
+}
+function validRoom(v) {
+  var n = Number(String(v || '').replace(/[^0-9۰-۹]/g, '').replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }));
+  return n >= 101 && n < 10000 && n % 100 >= 1 && n % 100 <= 60 ? n : null;
+}
+function apOf(room) { return apsLocal().filter(function (a) { return Number(a.room) === Number(room); })[0] || null; }
+
+// ---------- پنجرهٔ کوچک پایین صفحه برای کارهای اکسس پوینت ----------
+function sheet(html) {
+  closeSheet();
+  var d = document.createElement('div');
+  d.id = 'sheet'; d.className = 'sheetbg';
+  d.innerHTML = '<div class="sheetbox">' + html + '</div>';
+  d.addEventListener('click', function (e) { if (e.target === d) closeSheet(); });
+  document.body.appendChild(d);
+  var f = d.querySelector('input'); if (f) setTimeout(function () { f.focus(); }, 50);
+}
+function closeSheet() { var d = el('sheet'); if (d) d.remove(); }
+function apRefresh() { if (S.apView && el('apq')) renderAps(apsLocal()); }
+function apMenu(room) {
+  var a = apOf(room); if (!a) return;
+  sheet('<div class="sheettitle">اتاق ' + esc(a.room) + '<span dir="ltr">' + (a.mac ? esc(a.mac) : 'MAC ثبت نشده') + '</span></div>' +
+    '<button class="sbtn" data-apact="move" data-room="' + a.room + '">انتقال به اتاق دیگر</button>' +
+    '<button class="sbtn" data-apact="edit" data-room="' + a.room + '">ویرایش MAC</button>' +
+    '<button class="sbtn danger" data-apact="del" data-room="' + a.room + '">حذف اکسس پوینت</button>' +
+    '<button class="sbtn ghost" data-apact="close">بستن</button>');
+}
+function apForm(kind, room) {
+  var a = room ? apOf(room) : null, h = '';
+  if (kind === 'move') h = '<div class="sheettitle">انتقال اکسس پوینت اتاق ' + esc(room) + '</div><label>شماره اتاق جدید</label>' +
+    '<input id="f_room" inputmode="numeric" autocomplete="off" placeholder="مثلاً 1203">';
+  if (kind === 'edit') h = '<div class="sheettitle">ویرایش MAC اتاق ' + esc(room) + '</div><label>MAC</label>' +
+    '<input id="f_mac" dir="ltr" autocomplete="off" autocapitalize="characters" placeholder="AA:BB:CC:DD:EE:FF" value="' + esc(a && a.mac || '') + '">';
+  if (kind === 'add') h = '<div class="sheettitle">افزودن اکسس پوینت</div><label>شماره اتاق</label>' +
+    '<input id="f_room" inputmode="numeric" autocomplete="off" placeholder="مثلاً 1203"><label>MAC (اختیاری)</label>' +
+    '<input id="f_mac" dir="ltr" autocomplete="off" autocapitalize="characters" placeholder="AA:BB:CC:DD:EE:FF">';
+  sheet(h + '<button class="sbtn ok" data-apdo="' + kind + '" data-room="' + (room || '') + '">ثبت</button><button class="sbtn ghost" data-apact="close">انصراف</button>');
+}
+// MAC تکراری: تأیید انتقال از اتاق قبلی
+function macOk(mac, room) {
+  var dup = mac ? apOwner(mac, room) : null;
+  return !dup || confirm('این MAC (' + mac + ') قبلاً برای اتاق ' + dup.room + ' ثبت شده است.\n\nاکسس پوینت به اتاق ' + room + ' منتقل شود و از اتاق ' + dup.room + ' حذف شود؟');
+}
+function apDo(kind, from) {
+  var fr = el('f_room'), fm = el('f_mac');
+  var to = fr ? validRoom(fr.value) : Number(from);
+  if (fr && !to) { toast('شماره اتاق درست نیست', 3000); return; }
+  var mac = null;
+  if (fm) { mac = fm.value.trim() ? normMac(fm.value) : ''; if (mac === null) { toast('MAC باید ۱۲ کاراکتر باشد، مثل AA:BB:CC:DD:EE:FF', 4000); return; } }
+  if (kind === 'move') {
+    var src = apOf(from);
+    if (!src) { closeSheet(); return; }
+    if (to === Number(from)) { toast('همان اتاق است', 2500); return; }
+    var there = apOf(to);
+    if (there && !confirm('اتاق ' + to + ' خودش اکسس پوینت دارد' + (there.mac ? ' (MAC: ' + there.mac + ')' : '') + '.\nجایگزین شود؟')) return;
+    if (!confirm('اکسس پوینت اتاق ' + from + (src.mac ? ' (MAC: ' + src.mac + ')' : '') + ' به اتاق ' + to + ' منتقل شود؟')) return;
+    apOp('apset', to, src.mac || '');
+    apOp('apdel', from);
+    toast('اکسس پوینت از اتاق ' + from + ' به اتاق ' + to + ' منتقل شد', 3500);
+  } else if (kind === 'edit') {
+    if (!macOk(mac, to)) return;
+    apOp('apset', to, mac);
+    toast(mac ? 'MAC اتاق ' + to + ' ثبت شد' : 'MAC اتاق ' + to + ' پاک شد', 3000);
+  } else if (kind === 'add') {
+    var ex = apOf(to);
+    if (ex && !mac) { toast('اتاق ' + to + ' از قبل در لیست هست', 3000); return; }
+    if (ex && ex.mac && mac !== ex.mac && !confirm('اتاق ' + to + ' از قبل اکسس پوینت دارد (MAC: ' + ex.mac + ').\nMAC جدید جایگزین شود؟')) return;
+    if (!macOk(mac, to)) return;
+    apOp('apset', to, mac);
+    toast('اکسس پوینت اتاق ' + to + ' ثبت شد', 3000);
+  }
+  closeSheet(); apRefresh();
 }
 function fetchAps() {
   return api('aps').then(function (list) { list = apOverlay(list); mem(apsKey(), JSON.stringify(list)); return list; });
@@ -300,7 +398,8 @@ function loadAps() {
 }
 function renderAps(list) {
   var q = (el('apq') && el('apq').value) || '';
-  var h = '<input id="apq" class="apq" placeholder="جستجو: شماره اتاق، طبقه یا MAC" value="' + esc(q) + '" autocomplete="off">';
+  var h = '<button class="apadd" data-apact="add">+ افزودن اکسس پوینت</button>' +
+    '<input id="apq" class="apq" placeholder="جستجو: شماره اتاق، طبقه یا MAC" value="' + esc(q) + '" autocomplete="off">';
   h += '<div class="apcount">' + list.length + ' اتاق دارای اکسس پوینت' + (list.filter(function (a) { return !a.mac; }).length ? ' | ' + list.filter(function (a) { return !a.mac; }).length + ' اتاق بدون MAC' : '') + '</div><div id="aplist"></div>';
   el('main').innerHTML = h;
   S.aps = list; apFilter();
@@ -317,7 +416,7 @@ function apFilter() {
   var h = '', last = null;
   list.forEach(function (a) {
     if (a.floor !== last) { h += '<div class="apfloor">طبقه ' + esc(a.floor) + '</div>'; last = a.floor; }
-    h += '<div class="aprow"><span class="aproom">' + esc(a.room) + '</span><span class="apmac" dir="ltr">' + (a.mac ? esc(a.mac) : '<i>MAC ثبت نشده</i>') + '</span>' +
+    h += '<div class="aprow" data-aproom="' + esc(a.room) + '"><span class="aproom">' + esc(a.room) + '</span><span class="apmac" dir="ltr">' + (a.mac ? esc(a.mac) : '<i>MAC ثبت نشده</i>') + '</span>' +
       '<span class="apmeta">' + esc([a.date, a.who].filter(Boolean).join(' | ')) + '</span></div>';
   });
   el('aplist').innerHTML = h || '<div class="msg">چیزی پیدا نشد.</div>';
@@ -393,7 +492,23 @@ function save(i, field, value) {
   sync();
 }
 document.addEventListener('click', function (e) {
+  var row = e.target.closest('.aprow');
+  if (row) { apMenu(row.getAttribute('data-aproom')); return; }
   var b = e.target.closest('button'); if (!b) return;
+  if (b.hasAttribute('data-apact')) {
+    var act = b.getAttribute('data-apact'), rm = b.getAttribute('data-room');
+    if (act === 'close') closeSheet();
+    else if (act === 'add') apForm('add');
+    else if (act === 'move' || act === 'edit') apForm(act, rm);
+    else if (act === 'del') {
+      var a0 = apOf(rm);
+      if (a0 && confirm('اکسس پوینت اتاق ' + rm + (a0.mac ? ' (MAC: ' + a0.mac + ')' : '') + ' از لیست دائمی حذف شود؟')) {
+        apOp('apdel', rm); closeSheet(); apRefresh(); toast('اکسس پوینت اتاق ' + rm + ' حذف شد', 3000);
+      }
+    }
+    return;
+  }
+  if (b.hasAttribute('data-apdo')) { apDo(b.getAttribute('data-apdo'), b.getAttribute('data-room')); return; }
   if (b.hasAttribute('data-tok')) {
     var raw = el('tok').value || '', km = raw.match(/[?&]k=([A-Za-z0-9]+)/);
     var v = (km ? km[1] : raw).replace(/[^A-Za-z0-9]/g, '');  // کل لینک هم قبول است
